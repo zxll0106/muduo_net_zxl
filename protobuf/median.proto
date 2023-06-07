@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+package median;
+
+option cc_generic_services = true;
+option java_generic_services = true;
+option py_generic_services = true;
+
+
+message QueryResponse {
+  required int64 count = 1;
+  optional int64 min = 2;
+  optional int64 max = 3;
+  optional int64 sum = 4;  // should be int128
+}
+
+message SearchRequest {
+  required int64 guess = 1;
+}
+
+message SearchResponse {
+  required int64 smaller = 1;
+  required int64 same = 2;
+}
+
+message GenerateRequest {
+  required int64 count = 1;
+  required int64 min = 2; // inclusive
+  required int64 max = 3; // exclusive
+}
+
+message Empty
+{
+}
+
+
+service Sorter {
+  rpc Query(Empty) returns (QueryResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  rpc Generate(GenerateRequest) returns (Empty);
+}
+
