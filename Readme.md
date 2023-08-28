@@ -1,10 +1,81 @@
 # 一个基于非阻塞 IO 和事件驱动的C++ 网络库
-该项目是基于Reactor模式的网络库，采用one loop per thread+threadpool模型，每个线程只有一个事件循环EventLoop类，用于响应计时器和IO事件。每个Server类有自己的线程池，使用round-robin算法来选取池中的Eventloop.采用基于对象的设计风格，使用户在使用该网络库时不需要继承网络库中的类。为了使用将定时事件融入的IO复用框架中，使用timerfd避免处理信号。为了不用锁的情况下在线程间调配任务并保证线程安全，首先将该任务插入目标线程的任务队列，再向eventfd写入来唤醒线程。实现了Buffer来处理水平触发模式下的非阻塞I/O读写问题，避免忙等。
-## 类图
 
 ## Reactor部分
 ![](https://github.com/zxll0106/muduo_net_zxl/blob/main/muduo_reactor.PNG)
 
 ### EventLoop类
-one loop per thread每个线程只有一个EventLoop对象
+one loop per thread每个线程只有一个EventLoop对象，EventLoop会记住所属线程的tid(`threadId_`).拥有EventLoop的线程是IO线程，主要功能是运行`loop()`，EventLoop对象的生存期和所属线程一样长。
+
+`loop()`调用`Poller::poll()`获得当前活动事件的`Channel`列表，然后依次调用每个Channel的handleEvent()函数
+
+`quit()`将`quit_`设为true，但是调用后不是立即起效，而是在`loop()`下次运行到`while(!quit)`
+
+`runInLoop()`用户在其他线程调用`runInLoop()`，cb会被加入队列，IO线程会被唤醒来调用这个Functor。Io线程平时会阻塞在Poller::poll(),为了让IO线程能立刻执行用户回调，我们需要去唤醒它。传统方法是使用管道，其他线程往本线程管道里写入。
+我们使用eventfd实现更高效地唤醒。
+```
+eventfd 是一个比 pipe 更高效的线程间事件通知
+机制，一方面它比 pipe 少用一个 file descripor，
+节省了资源；另一方面，eventfd 的缓冲区管理也
+简单得多，全部“buffer” 只有定长8 bytes，不像
+pipe 那样可能有不定长的真正 buffer。
+```
+```
+void EventLoop::runInLoop(const Functor &cb) {
+    if (isInLoopThread()) {
+        cb();
+    } else {
+        queueInLoop(cb);
+    }
+}
+
+void EventLoop::queueInLoop(const Functor &cb) {
+    {
+        MutexLockGuard lock(mutex_);
+        pendingFunctors_.push_back(cb);
+    }
+    // if (callingPendingFunctors_) {
+    //     printf("callingPendingFunctors!!\n");
+    // }
+    if (!isInLoopThread() || callingPendingFunctors_) {
+        // printf("wakeup!!\n");
+        wakeup();
+    }
+}
+```
+wakeupChannel_用于处理eventfd的可读事件，回调handleRead()函数，读走eventfd缓冲区的内容
+
+`doPendingFunctors`不是对functor队列加锁后依次执行队列里的任务，而是通过swap()函数把队列的内容交换到另一个局部变量里，这样减少了临界区的长度，也避免死锁因为队列里的任务可能会再次调用到runInLoop()
+
+### Channel类
+
+
+
+每个`Channel`对象只属于一个EventLoop，因此每个Channel对象只属于某一个IO线程。`Channel`不拥有fd，不负责这个fd的生存期，只负责把不同的IO事件分发为不同的回调
+
+`fd_`:负责的fd
+`events_`：关心的IO事件
+`revents_`：目前的活动事件，由Poller设置
+
+`handleEvent()`当不同事件发生时，调用相应的回调
+
+`enableReading()``enableWriting() disableWriting() disable()`修改`events`,调用`update()`
+
+`set*Callback()`用户设置回调
+
+### Poller类
+
+IO复用poll的封装。每个EventLoop里有一个Poller
+
+`poll()`调用::poll()系统调用获得当前活动的IO事件，
+
+`fillActiveChannels()`遍历pollfds_数组，找到有活动事件的fd，把该fd对应的Channel队形填充到调用方传入的activeChannels，并设置channel对象的revents_
+
+`updateChannel()`更新fd关注的事件，将Channel的events_的值赋给Poller的pollfds_里event。如果某个Channel不关心任何事件，就把pollfd.fd设为-1让::poll()忽略这个文件描述符
+
+## Tcp网络库部分
+### TcpServer类
+使用`Acceptor`获得新连接的fd，新建`TcpConnection`对象
+
+
+
 
