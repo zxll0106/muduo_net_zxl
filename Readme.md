@@ -73,8 +73,27 @@ IO复用poll的封装。每个EventLoop里有一个Poller
 `updateChannel()`更新fd关注的事件，将Channel的events_的值赋给Poller的pollfds_里event。如果某个Channel不关心任何事件，就把pollfd.fd设为-1让::poll()忽略这个文件描述符
 
 ## Tcp网络库部分
+### Acceptor类
+
+用于`::accept()`新连接，并通过回调通知调用者。
+每个TcpServer都有一个Acceptor。
+
+在构造函数里完成创建socket，绑定Ip和端口的工作。
+`listen()`：调用`::listen()`函数，成为用于监听的文件描述符。在调用enableReading()使channel对象所属EventLoop的poller对象监听该fd
+
+`handleRead()`：当acceptSocket_可读时，回调这个函数，accept()新连接，再回调TcpServer::newConnection()函数
+
 ### TcpServer类
-使用`Acceptor`获得新连接的fd，新建`TcpConnection`对象
+管理Acceptor类获得新连接TcpConnection
+
+`start()`启动线程池，以及调用Acceptor::listen()
+
+`newConnection()`
+
+### TcpConnection类
+
+
+
 
 
 
