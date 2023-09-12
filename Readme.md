@@ -1,7 +1,7 @@
 # 一个基于非阻塞 IO 和事件驱动的C++ 网络库
-
-## Reactor部分
 ![](https://github.com/zxll0106/muduo_net_zxl/blob/main/muduo.PNG)
+## Reactor部分
+
 
 ### EventLoop类
 one loop per thread每个线程只有一个EventLoop对象，EventLoop会记住所属线程的tid(`threadId_`).拥有EventLoop的线程是IO线程，主要功能是运行`loop()`，EventLoop对象的生存期和所属线程一样长。
