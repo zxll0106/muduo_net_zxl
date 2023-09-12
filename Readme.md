@@ -92,6 +92,14 @@ IO复用poll的封装。每个EventLoop里有一个Poller
 
 ### TcpConnection类
 
+### TimerQueue类
+
+定时器队列，按到期时间排序。
+
+使用std::set，key为pair<TimeStamp,Timer*>。
+不使用map因为无法处理Timestamp相同的情况
+
+当timerfd到期时，回调handleRead(),从set中取出到期定时器并删除，执行回调，
 
 
 
